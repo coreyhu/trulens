@@ -12,6 +12,7 @@ import sys
 from time import sleep
 from types import ModuleType
 from typing import (
+    TYPE_CHECKING,
     Any,
     Awaitable,
     Callable,
@@ -20,6 +21,7 @@ from typing import (
     List,
     Optional,
     Sequence,
+    Set,
     Tuple,
     Type,
     TypeVar,
@@ -45,6 +47,9 @@ from trulens.core.utils.python import wrap_awaitable
 from trulens.core.utils.serial import JSON
 from trulens.core.utils.serial import SerialModel
 from trulens.core.utils.threading import DEFAULT_NETWORK_TIMEOUT
+
+if TYPE_CHECKING:
+    from trulens.core.app.base import RecordingContext
 
 logger = logging.getLogger(__name__)
 
@@ -324,7 +329,7 @@ class Endpoint(WithClassInfo, SerialModel, SingletonPerName):
                     retry_delay *= 2
 
         raise RuntimeError(
-            f"Endpoint {self.name} request failed {self.retries+1} time(s): \n\t"
+            f"Endpoint {self.name} request failed {self.retries + 1} time(s): \n\t"
             + ("\n\t".join(map(str, errors)))
         )
 
@@ -421,14 +426,22 @@ class Endpoint(WithClassInfo, SerialModel, SingletonPerName):
                         produced_func
                     )
                     Endpoint.instrumented_methods[object].append(
-                        (produced_func, instrumented_produced_func, type(self))
+                        (
+                            produced_func,
+                            instrumented_produced_func,
+                            type(self),
+                        )
                     )
                     return instrumented_produced_func
                 else:
                     return produced_func
 
             Endpoint.instrumented_methods[cls].append(
-                (func, metawrap, type(self))
+                (
+                    func,
+                    metawrap,
+                    type(self),
+                )
             )
 
             setattr(cls, wrapper_method_name, metawrap)
@@ -507,6 +520,7 @@ class Endpoint(WithClassInfo, SerialModel, SingletonPerName):
     @staticmethod
     def track_all_costs_tally(
         __func: mod_asynchro_utils.CallableMaybeAwaitable[A, T],
+        contexts: Set[RecordingContext],
         *args,
         with_openai: bool = True,
         with_hugs: bool = True,
@@ -519,6 +533,9 @@ class Endpoint(WithClassInfo, SerialModel, SingletonPerName):
         Track costs of all of the apis we can currently track, over the
         execution of thunk.
         """
+
+        # hack to get contexts in locals
+        assert contexts, "No contexts provided."
 
         result, cbs = Endpoint.track_all_costs(
             __func,

@@ -16,6 +16,7 @@ from typing import (
     Dict,
     Iterable,
     List,
+    Mapping,
     Optional,
     Tuple,
     TypeVar,
@@ -357,7 +358,7 @@ class Feedback(mod_feedback_schema.FeedbackDefinition):
 
         def prepare_feedback(
             row,
-        ) -> Optional[mod_feedback_schema.FeedbackResultStatus]:
+        ) -> Optional[mod_feedback_schema.FeedbackResult]:
             record_json = row.record_json
             record = mod_record_schema.Record.model_validate(record_json)
 
@@ -371,7 +372,7 @@ class Feedback(mod_feedback_schema.FeedbackDefinition):
                 )
                 return None
 
-            feedback = Feedback.model_validate(row.feedback_json)
+            feedback: Feedback = Feedback.model_validate(row.feedback_json)
 
             return feedback.run_and_log(
                 record=record,
@@ -949,7 +950,7 @@ Feedback function signature:
                 num_total = num_skipped + num_evaled
                 warnings.warn(
                     (
-                        f"{num_skipped}/{num_total}={100.0*num_skipped/num_total:0.1f}"
+                        f"{num_skipped}/{num_total}={100.0 * num_skipped / num_total:0.1f}"
                         "% evaluation(s) were skipped because they raised SkipEval "
                         "(see earlier warnings for listing)."
                     ),
@@ -1045,9 +1046,10 @@ Feedback function signature:
                 )
             )
 
-            feedback_result = self.run(app=app, record=record).update(
-                feedback_result_id=feedback_result_id
-            )
+            feedback_result = self.run(
+                app=app,
+                record=record,
+            ).update(feedback_result_id=feedback_result_id)
 
         except Exception:
             # Convert traceback to a UTF-8 string, replacing errors to avoid encoding issues
@@ -1187,8 +1189,16 @@ Feedback function signature:
         if app is not None:
             source_data["__app__"] = app
 
-        if record is not None:
+        if record:
             source_data["__record__"] = record.layout_calls_as_app()
+
+            if isinstance(record.inline_data, Mapping):
+                inline_data = {
+                    k: val["value"]
+                    for k, val in record.inline_data
+                    if isinstance(val, Mapping) and "value" in val
+                }
+                source_data = {**source_data, **inline_data}
 
         return source_data
 

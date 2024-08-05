@@ -33,6 +33,7 @@ from rich.markdown import Markdown
 from rich.pretty import pretty_repr
 import trulens.core.feedback.endpoint as mod_base_endpoint
 from trulens.core.schema import Select
+from trulens.core.utils.serial import Lens
 from trulens.core.schema import app as mod_app_schema
 from trulens.core.schema import base as mod_base_schema
 from trulens.core.schema import feedback as mod_feedback_schema
@@ -235,6 +236,8 @@ class Feedback(mod_feedback_schema.FeedbackDefinition):
         self.imp = imp
         self.agg = agg
 
+        self.fill_inline_selectors()
+
         # Verify that `imp` expects the arguments specified in `selectors`:
         if self.imp is not None:
             sig: Signature = signature(self.imp)
@@ -243,6 +246,26 @@ class Feedback(mod_feedback_schema.FeedbackDefinition):
                     f"{argname} is not an argument to {self.imp.__name__}. "
                     f"Its arguments are {list(sig.parameters.keys())}."
                 )
+
+    def fill_inline_selectors(self):
+        """
+        Use inline data for filling missing feedback function arguments.
+        """
+
+        assert (
+            self.imp is not None
+        ), "Feedback function implementation is required to determine default argument names."
+
+        sig: Signature = signature(self.imp)
+        par_names = list(
+            k for k in sig.parameters.keys() if k not in self.selectors
+        )
+        self.selectors = {
+            par_name: Select.RecordInlineData[par_name]
+            if par_name not in self.selectors
+            else self.selectors[par_name]
+            for par_name in par_names
+        }
 
     def on_input_output(self) -> Feedback:
         """
@@ -659,7 +682,10 @@ class Feedback(mod_feedback_schema.FeedbackDefinition):
 
         # with c.capture() as cap:
         for k, q in self.selectors.items():
-            if q.exists(source_data):
+            if q.exists(
+                source_data
+            ) or Select.RecordInlineData.is_immediate_prefix_of(q):
+                # Skip if q exists in record or references inline data should be supplied at app runtime.
                 continue
 
             msg += f"""
@@ -1195,7 +1221,7 @@ Feedback function signature:
             if isinstance(record.inline_data, Mapping):
                 inline_data = {
                     k: val["value"]
-                    for k, val in record.inline_data
+                    for k, val in record.inline_data.items()
                     if isinstance(val, Mapping) and "value" in val
                 }
                 source_data = {**source_data, **inline_data}

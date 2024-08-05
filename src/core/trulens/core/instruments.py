@@ -1037,7 +1037,9 @@ class instrument(AddInstruments):
         self.method(cls, name)
 
 
-def tag(key: str, value: Any, collection: bool = False):
+def mark_inline(
+    value: Any, labels: Union[str, Iterable[str]], collection: bool = False
+):
     """Set inline data for the given key."""
 
     def _find_contexts_frame(f):
@@ -1051,6 +1053,11 @@ def tag(key: str, value: Any, collection: bool = False):
         skip=python.caller_frame(),
     )
     # Note: are empty sets false?
+    if isinstance(labels, str):
+        labels = [labels]
     if contexts:
         for context in contexts:
-            context.add_inline_data(key, jsonify(value), collection=collection)
+            for label in labels:
+                context.add_inline_data(
+                    label, jsonify(value), collection=collection
+                )
